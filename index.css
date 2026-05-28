@@ -1,0 +1,298 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X, CheckCircle, Send, Bird } from 'lucide-react';
+import { LeadData } from '../types';
+
+interface LeadModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  selectedPlan?: string;
+  gameScore?: number;
+  gameDiscount?: number;
+}
+
+export const LeadModal: React.FC<LeadModalProps> = ({
+  isOpen,
+  onClose,
+  selectedPlan,
+  gameScore = 0,
+  gameDiscount = 0
+}) => {
+  const [name, setName] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [goal, setGoal] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+
+  const generatePromoCode = (discount: number) => {
+    const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+    return `SPARROW-${discount}-${rand}`;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !whatsapp) return;
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    const discountValue = gameDiscount > 0 ? gameDiscount : 0;
+    const code = discountValue > 0 ? generatePromoCode(discountValue) : '';
+    setPromoCode(code);
+
+    const lead: LeadData = {
+      name,
+      whatsapp,
+      goal: goal || selectedPlan || 'Консультация',
+      score: gameScore,
+      discount: discountValue,
+      promoCode: code,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(lead),
+      });
+
+      if (!response.ok) {
+        throw new Error('Не удалось забронировать заявку на сервере. Попробуйте еще раз.');
+      }
+
+      const data = await response.json();
+      if (data.emailSent) {
+        console.log('✅ Заявка успешно отправлена на почту!');
+      } else {
+        console.warn('⚠️ Заявка успешно принята, но отправка на почту пропущена или завершилась с ошибкой:', data.emailError || 'SMTP не настроен');
+      }
+
+      // Store in localStorage
+      localStorage.setItem('sparrow_last_lead', JSON.stringify(lead));
+      setIsSubmitted(true);
+    } catch (err: any) {
+      console.error(err);
+      setSubmitError(err?.message || 'Произошла ошибка при отправке заявки.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleWhatsAppRedirect = () => {
+    const phoneNumber = '77776903467'; // Global Sparrow active WhatsApp
+    let text = `Привет! Меня зовут *${name}*.\n`;
+    text += `Хочу записаться на консультацию в *Global Sparrow*.\n`;
+    text += `📌 Моя цель: *${goal || selectedPlan || 'Выбор направления'}*\n`;
+    text += `📱 Мой WhatsApp: ${whatsapp}\n`;
+
+    if (gameScore > 0 && gameDiscount > 0) {
+      text += `🎮 Сыграл в полет воробья: набрал *${gameScore}* очков!\n`;
+      text += `🎁 Моя скидка составляет: *${gameDiscount}%*\n`;
+      text += `🎟️ Мой промокод: *${promoCode}*`;
+    } else if (selectedPlan) {
+      text += `💼 Интересует тариф: *${selectedPlan}*`;
+    }
+
+    const encodedText = encodeURIComponent(text);
+    const waUrl = `https://wa.me/${phoneNumber}?text=${encodedText}`;
+    window.open(waUrl, '_blank');
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div id="lead-modal-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          {/* Animated Modal Container */}
+          <motion.div
+            id="lead-modal"
+            className="w-full max-w-lg overflow-hidden bg-white shadow-2xl rounded-3xl"
+            initial={{ scale: 0.9, y: 50, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.9, y: 50, opacity: 0 }}
+            transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
+          >
+            {/* Header image / brand line */}
+            <div className="relative h-2 bg-gradient-to-r from-red-500 via-teal-600 to-amber-500" />
+            
+            <div className="p-6 sm:p-8">
+              {/* Close button */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-slate-50 rounded-xl">
+                    <Bird className="w-6 h-6 text-teal-600" />
+                  </div>
+                  <span className="text-lg font-semibold text-slate-800 font-sans tracking-tight">GLOBAL SPARROW</span>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="p-2 text-slate-400 cursor-pointer rounded-full hover:bg-slate-100 hover:text-slate-600 transition-all"
+                  aria-label="Закрыть"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {!isSubmitted ? (
+                <>
+                  <div className="mb-6">
+                    {gameDiscount > 0 ? (
+                      <div className="p-4 bg-teal-50 border border-teal-100/50 rounded-2xl mb-4">
+                        <p className="text-sm font-medium text-teal-800 font-sans">
+                          🎉 Поздравляем! Ваш результат в игре: <strong className="text-teal-900 text-base">{gameScore} очков</strong>.
+                        </p>
+                        <p className="text-xs text-teal-600 mt-1">
+                          Заполните форму ниже, чтобы забронировать скидку <strong className="text-teal-800 text-sm">{gameDiscount}%</strong> на любую из наших программ обучения!
+                        </p>
+                      </div>
+                    ) : selectedPlan ? (
+                      <div className="p-4 bg-amber-50/60 border border-amber-100/50 rounded-2xl mb-4">
+                        <p className="text-sm font-medium text-amber-800 font-sans">
+                          Выбранный тариф: <strong className="text-amber-900 text-base">{selectedPlan}</strong>
+                        </p>
+                        <p className="text-xs text-amber-600 mt-1">
+                          Оставьте контакты для детального разбора вашего портфолио и бронирования места.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mb-4">
+                        <h3 className="text-xl sm:text-2xl font-bold font-sans text-slate-900 tracking-tight">Заявка на консультацию</h3>
+                        <p className="text-sm text-slate-400 mt-1 font-sans">
+                          Индивидуальный разбор вашего академического профиля, экспертная оценка шансов на ВНЖ и подбор грантов.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* Name */}
+                    <div>
+                      <label htmlFor="modal-name" className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 font-sans">
+                        Ваше имя <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="modal-name"
+                        type="text"
+                        required
+                        value={name}
+                        disabled={isSubmitting}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Александр"
+                        className="w-full px-4 py-3 border border-slate-100 rounded-2xl bg-slate-50 font-sans text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500 focus:bg-white transition-all disabled:opacity-50"
+                      />
+                    </div>
+
+                    {/* WhatsApp */}
+                    <div>
+                      <label htmlFor="modal-whatsapp" className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 font-sans">
+                        Номер WhatsApp <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="modal-whatsapp"
+                        type="tel"
+                        required
+                        value={whatsapp}
+                        disabled={isSubmitting}
+                        onChange={(e) => setWhatsapp(e.target.value)}
+                        placeholder="+7 777 000 0000"
+                        className="w-full px-4 py-3 border border-slate-100 rounded-2xl bg-slate-50 font-sans text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500 focus:bg-white transition-all disabled:opacity-50"
+                      />
+                    </div>
+
+                    {/* Goal / Target selection */}
+                    <div>
+                      <label htmlFor="modal-goal" className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5 font-sans">
+                        Ваша главная цель
+                      </label>
+                      <select
+                        id="modal-goal"
+                        value={goal}
+                        disabled={isSubmitting}
+                        onChange={(e) => setGoal(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-100 rounded-2xl bg-slate-50 font-sans text-sm text-slate-800 focus:outline-none focus:border-teal-500 focus:bg-white transition-all appearance-none disabled:opacity-50"
+                      >
+                        <option value="">-- Выберите цель --</option>
+                        <option value="Выучить английский с нуля">Английский язык с нуля</option>
+                        <option value="Сдать IELTS / TOEFL на высокий балл">Сдача IELTS / TOEFL</option>
+                        <option value="Пройти собеседование за рубежом">Бизнес и карьера в IT/FAANG</option>
+                        <option value="Поступить в зарубежный вуз с грантом">Поступление в университет (бакалавриат/магистратура)</option>
+                        <option value="Иммигрировать и получить ВНЖ">Иммиграция (Европа, Канада, США)</option>
+                        <option value="Другое">Другое / Личный вопрос</option>
+                      </select>
+                    </div>
+
+                    {submitError && (
+                      <div className="p-3 bg-red-50 border border-red-100 text-xs text-red-600 font-sans rounded-2xl">
+                        {submitError}
+                      </div>
+                    )}
+
+                    {/* Submit */}
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      data-track="lead-submit-click"
+                      className={`w-full py-3.5 px-6 font-semibold rounded-2xl text-white bg-teal-600 shadow-md shadow-teal-600/10 hover:bg-teal-700 hover:shadow-lg hover:shadow-teal-700/20 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 font-sans ${isSubmitting ? 'opacity-80 cursor-wait' : ''}`}
+                    >
+                      {isSubmitting ? (
+                        <span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      {isSubmitting ? 'Отправка заявки...' : 'Забронировать консультацию'}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <div className="text-center py-6 flex flex-col items-center">
+                  <div className="w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center text-teal-600 mb-4 animate-bounce">
+                    <CheckCircle className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-2xl font-bold font-sans text-slate-800 tracking-tight">Заявка принята!</h3>
+                  <p className="text-sm text-slate-400 mt-2 max-w-sm mx-auto font-sans leading-relaxed">
+                    Наши эксперты свяжутся с вами в течение 15 минут. Нажмите кнопку ниже, чтобы переслать заявку и получить ответ в WhatsApp мгновенно.
+                  </p>
+
+                  {gameDiscount > 0 && (
+                    <div className="my-6 p-4 w-full bg-slate-50 border border-slate-100 rounded-2xl">
+                      <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Ваша персональная скидка {gameDiscount}%</p>
+                      <p className="text-lg font-mono font-bold text-teal-700 tracking-wider font-mono">{promoCode}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Скопирован и отправлен в вашу форму контактов</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleWhatsAppRedirect}
+                    data-track="lead-whatsapp-redirect"
+                    className="w-full py-4 px-6 font-semibold rounded-2xl text-white bg-emerald-500 shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 hover:shadow-xl hover:shadow-emerald-600/30 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 font-sans mt-4"
+                  >
+                    Перейти в WhatsApp и Начать
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsSubmitted(false);
+                      onClose();
+                    }}
+                    className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-slate-600 mt-4 underline font-sans"
+                  >
+                    Вернуться на сайт
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};

@@ -1,0 +1,6 @@
+{
+  "name": "Global Sparrow",
+  "description": "Образование и иммиграция за рубежом. Твой путь к учебе, работе и жизни за рубежом начинается здесь.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

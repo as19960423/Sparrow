@@ -1,0 +1,6 @@
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=as19960423@gmail.com
+SMTP_PASS=Sparrow3467
+SMTP_FROM='as19960423@gmail.com'
+RECIPIENT_EMAIL=theenglishsparrow@gmail.com
